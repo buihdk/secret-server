@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"time"
 
+	"secretserver/internal/crypto"
+
 	"go.mongodb.org/mongo-driver/bson"
 
 	"github.com/labstack/echo"
@@ -20,6 +22,13 @@ func GetSecret(c echo.Context) error {
 		c.Logger().Error(err)
 		return c.String(400, "Secret not found")
 	}
+
+	plaintext, err := crypto.Decrypt(result.SecretText)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.String(500, "Failed to decrypt secret")
+	}
+	result.SecretText = plaintext
 
 	if err := c.Bind(result); err != nil {
 		return err
@@ -48,8 +57,14 @@ func AddSecret(c echo.Context) error {
 	// time must be in second
 	expireAfter := time.Unix(i, 0)
 
+	encryptedText, err := crypto.Encrypt(secretText)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.String(500, "Failed to encrypt secret")
+	}
+
 	secret := Secret{
-		SecretText:     secretText,
+		SecretText:     encryptedText,
 		RemainingViews: int32(expireAfterViews),
 		ExpiresAt:      expireAfter,
 		CreatedAt:      time.Now(),

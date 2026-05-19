@@ -1,0 +1,23 @@
+version: '3.7'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-change-me-in-production}
+      - MONGO_URI=mongodb://mongo:27017
+    depends_on:
+      - mongo
+    restart: on-failure
+
+  mongo:
+    image: mongo:4.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  mongo-data:
