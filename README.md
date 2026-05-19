@@ -38,8 +38,11 @@ Full spec: [`swagger.yaml`](swagger.yaml)
 POST /secret
 Content-Type: application/x-www-form-urlencoded
 
-secret=<text>&expireAfterViews=<int>&expireAfter=<unix-timestamp>
+secret=<text>&expireAfterViews=<int>&expireAfter=<minutes>
 ```
+
+- `expireAfterViews` — must be greater than 0; secret is deleted after this many reads
+- `expireAfter` — minutes until expiry; `0` means never expires
 
 Returns the created secret with its `hash`.
 
@@ -49,7 +52,7 @@ Returns the created secret with its `hash`.
 GET /secret/:hash
 ```
 
-Returns the secret as JSON, or `400` if not found.
+Returns the secret as JSON and decrements the remaining view count. The secret is permanently deleted when the last view is consumed or the TTL has passed. Returns `404` if not found or expired.
 
 ### Metrics
 
@@ -66,15 +69,23 @@ Returns per-endpoint request counts and average latency (ms):
 }
 ```
 
+## Running Tests
+
+```bash
+go test ./...
+```
+
+Tests cover AES-256-GCM encryption/decryption (`internal/crypto`), request metrics tracking (`internal/metrics`), and hash generation (`secret`).
+
 ## Architecture
 
 ```
 main.go
-├── external/mongodb/    — MongoDB singleton, URI from MONGO_URI env var
-├── internal/crypto/     — AES-256-GCM encrypt/decrypt (key from ENCRYPTION_KEY)
+├── external/mongodb/    — MongoDB singleton; URI from MONGO_URI env var
+├── internal/crypto/     — AES-256-GCM encrypt/decrypt; key from ENCRYPTION_KEY
 ├── internal/metrics/    — in-memory request counter + latency tracker
 ├── server/              — Echo HTTP server, middleware wiring, route registration
 └── secret/              — handlers, model (Secret + DoHash), repository
 ```
 
-Secrets are encrypted before insertion and decrypted on retrieval. The hash is derived from `SHA1(encryptedText + createdAt)`, base64-encoded.
+Secrets are encrypted before insertion and decrypted on retrieval. Each secret carries a cryptographically random 128-bit hex hash as its identifier.

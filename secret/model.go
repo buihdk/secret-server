@@ -1,8 +1,8 @@
 package secret
 
 import (
-	"crypto/sha1"
-	"encoding/base64"
+	"crypto/rand"
+	"encoding/hex"
 	"time"
 )
 
@@ -10,26 +10,24 @@ import (
 // swagger:model Secret
 type Secret struct {
 	// The date and time of the creation
-	CreatedAt time.Time `json:"createdAt,omitempty"`
+	CreatedAt time.Time `json:"createdAt,omitempty" bson:"createdAt"`
 
 	// The secret cannot be reached after this time
-	ExpiresAt time.Time `json:"expiresAt,omitempty"`
+	ExpiresAt time.Time `json:"expiresAt,omitempty" bson:"expiresAt"`
 
 	// Unique hash to identify the secrets
-	Hash string `json:"hash,omitempty"`
+	Hash string `json:"hash,omitempty" bson:"hash"`
 
 	// How many times the secret can be viewed
-	RemainingViews int32 `json:"remainingViews,omitempty"`
+	RemainingViews int32 `json:"remainingViews,omitempty" bson:"remainingViews"`
 
 	// The secret itself
-	SecretText string `json:"secretText,omitempty"`
+	SecretText string `json:"secretText,omitempty" bson:"secretText"`
 }
 
-// Hash generate hash field
+// DoHash sets Hash to a cryptographically random 128-bit hex string.
 func (m *Secret) DoHash() {
-	h := sha1.New()
-	h.Write([]byte(m.SecretText + m.CreatedAt.String()))
-	bs := h.Sum(nil)
-
-	m.Hash = base64.URLEncoding.EncodeToString(bs)
+	b := make([]byte, 16)
+	rand.Read(b) //nolint:errcheck // crypto/rand failure is unrecoverable
+	m.Hash = hex.EncodeToString(b)
 }

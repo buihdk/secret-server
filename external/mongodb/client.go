@@ -35,7 +35,7 @@ func init() {
 	}
 
 	// Check the connection
-	err = c.Ping(nil, nil)
+	err = c.Ping(ctx, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
