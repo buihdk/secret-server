@@ -25,8 +25,11 @@ Starts the app and a MongoDB instance together.
 
 | Variable | Default | Description |
 |---|---|---|
-| `ENCRYPTION_KEY` | `default-key-change-in-production!!` | AES-256-GCM encryption key |
+| `ENCRYPTION_KEY` | none, required | AES-256-GCM encryption key. The server refuses to start without it. |
 | `MONGO_URI` | `mongodb://localhost:27017` | MongoDB connection URI |
+| `METRICS_TOKEN` | none | If set, `GET /metrics` requires a matching `Authorization: Bearer` token. |
+
+Copy `.env.example` to `.env` and fill in real values. Do not commit `.env`.
 
 ## API
 
@@ -41,8 +44,8 @@ Content-Type: application/x-www-form-urlencoded
 secret=<text>&expireAfterViews=<int>&expireAfter=<minutes>
 ```
 
-- `expireAfterViews` — must be greater than 0; secret is deleted after this many reads
-- `expireAfter` — minutes until expiry; `0` means never expires
+- `expireAfterViews` - must be greater than 0. secret is deleted after this many reads
+- `expireAfter` - minutes until expiry. `0` means never expires
 
 Returns the created secret with its `hash`.
 
@@ -69,6 +72,8 @@ Returns per-endpoint request counts and average latency (ms):
 }
 ```
 
+Set `METRICS_TOKEN` to require an `Authorization: Bearer <token>` header on this endpoint.
+
 ## Running Tests
 
 ```bash
@@ -81,11 +86,11 @@ Tests cover AES-256-GCM encryption/decryption (`internal/crypto`), request metri
 
 ```
 main.go
-├── external/mongodb/    — MongoDB singleton; URI from MONGO_URI env var
-├── internal/crypto/     — AES-256-GCM encrypt/decrypt; key from ENCRYPTION_KEY
-├── internal/metrics/    — in-memory request counter + latency tracker
-├── server/              — Echo HTTP server, middleware wiring, route registration
-└── secret/              — handlers, model (Secret + DoHash), repository
+├── external/mongodb/ - MongoDB singleton; URI from MONGO_URI env var
+├── internal/crypto/ - AES-256-GCM encrypt/decrypt; key from ENCRYPTION_KEY
+├── internal/metrics/ - in-memory request counter + latency tracker
+├── server/ - Echo HTTP server, middleware wiring, route registration
+└── secret/ - handlers, model (Secret + DoHash), repository
 ```
 
 Secrets are encrypted before insertion and decrypted on retrieval. Each secret carries a cryptographically random 128-bit hex hash as its identifier.

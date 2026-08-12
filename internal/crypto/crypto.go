@@ -11,18 +11,33 @@ import (
 	"os"
 )
 
-func getKey() []byte {
+// ErrNoKey is returned when ENCRYPTION_KEY is not set.
+var ErrNoKey = errors.New("ENCRYPTION_KEY is not set")
+
+// CheckKey reports whether a usable ENCRYPTION_KEY is configured.
+// Call this at startup so the server refuses to run without a real key.
+func CheckKey() error {
+	_, err := getKey()
+	return err
+}
+
+func getKey() ([]byte, error) {
 	key := os.Getenv("ENCRYPTION_KEY")
 	if key == "" {
-		key = "default-key-change-in-production!!"
+		return nil, ErrNoKey
 	}
 	hash := sha256.Sum256([]byte(key))
-	return hash[:]
+	return hash[:], nil
 }
 
 // Encrypt encrypts plaintext using AES-256-GCM and returns a base64-encoded ciphertext.
 func Encrypt(plaintext string) (string, error) {
-	block, err := aes.NewCipher(getKey())
+	key, err := getKey()
+	if err != nil {
+		return "", err
+	}
+
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
 	}
@@ -48,7 +63,12 @@ func Decrypt(encoded string) (string, error) {
 		return "", err
 	}
 
-	block, err := aes.NewCipher(getKey())
+	key, err := getKey()
+	if err != nil {
+		return "", err
+	}
+
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
 	}

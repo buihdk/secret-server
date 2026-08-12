@@ -10,19 +10,19 @@ import (
 // swagger:model Secret
 type Secret struct {
 	// The date and time of the creation
-	CreatedAt time.Time `json:"createdAt,omitempty" bson:"createdAt"`
+	CreatedAt time.Time `json:"createdAt" bson:"createdAt"`
 
 	// The secret cannot be reached after this time
-	ExpiresAt time.Time `json:"expiresAt,omitempty" bson:"expiresAt"`
+	ExpiresAt time.Time `json:"expiresAt" bson:"expiresAt"`
 
 	// Unique hash to identify the secrets
-	Hash string `json:"hash,omitempty" bson:"hash"`
+	Hash string `json:"hash" bson:"hash"`
 
 	// How many times the secret can be viewed
-	RemainingViews int32 `json:"remainingViews,omitempty" bson:"remainingViews"`
+	RemainingViews int32 `json:"remainingViews" bson:"remainingViews"`
 
 	// The secret itself
-	SecretText string `json:"secretText,omitempty" bson:"secretText"`
+	SecretText string `json:"secretText" bson:"secretText"`
 }
 
 // DoHash sets Hash to a cryptographically random 128-bit hex string.
