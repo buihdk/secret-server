@@ -9,6 +9,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/labstack/echo"
 )
@@ -16,8 +17,24 @@ import (
 func GetSecret(c echo.Context) error {
 	hash := c.Param("hash")
 
+	db, err := collection()
+	if err != nil {
+		c.Logger().Error(err)
+		return c.String(http.StatusInternalServerError, "Internal server error")
+	}
+
+	// Atomically claim one view. The filter requires remainingViews > 0 so two
+	// concurrent reads cannot both succeed on a secret with one view left.
+	// $inc of -1 decrements as part of the same operation.
+	filter := bson.D{
+		{Key: "hash", Value: hash},
+		{Key: "remainingViews", Value: bson.D{{Key: "$gt", Value: 0}}},
+	}
+	update := bson.D{{Key: "$inc", Value: bson.D{{Key: "remainingViews", Value: -1}}}}
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.Before)
+
 	result := new(Secret)
-	err := db.FindOne(c.Request().Context(), bson.D{{Key: "hash", Value: hash}}).Decode(result)
+	err = db.FindOneAndUpdate(c.Request().Context(), filter, update, opts).Decode(result)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return c.String(http.StatusNotFound, "Secret not found")
@@ -26,32 +43,23 @@ func GetSecret(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, "Internal server error")
 	}
 
-	// Check time expiry (zero ExpiresAt means never expires)
+	// Check time expiry (zero ExpiresAt means never expires).
 	if !result.ExpiresAt.IsZero() && time.Now().After(result.ExpiresAt) {
 		db.DeleteOne(c.Request().Context(), bson.D{{Key: "hash", Value: hash}}) //nolint:errcheck
 		return c.String(http.StatusNotFound, "Secret not found")
 	}
 
-	// Check view count
-	if result.RemainingViews <= 0 {
-		db.DeleteOne(c.Request().Context(), bson.D{{Key: "hash", Value: hash}}) //nolint:errcheck
-		return c.String(http.StatusNotFound, "Secret not found")
-	}
-
-	// Consume one view
-	result.RemainingViews--
-	if result.RemainingViews == 0 {
+	// result holds the pre-update state. If it had one view left, this read
+	// consumed the last one, so delete the document.
+	if result.RemainingViews <= 1 {
 		if _, err := db.DeleteOne(c.Request().Context(), bson.D{{Key: "hash", Value: hash}}); err != nil {
 			c.Logger().Error(err)
 			return c.String(http.StatusInternalServerError, "Internal server error")
 		}
-	} else {
-		update := bson.D{{Key: "$set", Value: bson.D{{Key: "remainingViews", Value: result.RemainingViews}}}}
-		if _, err := db.UpdateOne(c.Request().Context(), bson.D{{Key: "hash", Value: hash}}, update); err != nil {
-			c.Logger().Error(err)
-			return c.String(http.StatusInternalServerError, "Internal server error")
-		}
 	}
+
+	// Report the count after consuming this view.
+	result.RemainingViews--
 
 	plaintext, err := crypto.Decrypt(result.SecretText)
 	if err != nil {
@@ -68,19 +76,21 @@ func AddSecret(c echo.Context) error {
 	expireAfterViewsR := c.FormValue("expireAfterViews")
 	expireAfterR := c.FormValue("expireAfter")
 
-	expireAfterViews, err := strconv.Atoi(expireAfterViewsR)
+	// Parse directly as int32 so a value that would overflow the stored field
+	// is rejected instead of wrapping to a negative or truncated count.
+	expireAfterViews, err := strconv.ParseInt(expireAfterViewsR, 10, 32)
 	if err != nil || expireAfterViews <= 0 {
 		c.Logger().Info("Invalid expireAfterViews")
 		return c.String(http.StatusMethodNotAllowed, "Invalid input")
 	}
 
 	minutes, err := strconv.ParseInt(expireAfterR, 10, 64)
-	if err != nil {
+	if err != nil || minutes < 0 {
 		c.Logger().Info("Invalid expireAfter")
 		return c.String(http.StatusMethodNotAllowed, "Invalid input")
 	}
 
-	// 0 = never expires; otherwise offset from now in minutes
+	// 0 = never expires; otherwise offset from now in minutes.
 	var expiresAt time.Time
 	if minutes > 0 {
 		expiresAt = time.Now().Add(time.Duration(minutes) * time.Minute)
@@ -100,23 +110,21 @@ func AddSecret(c echo.Context) error {
 	}
 	secret.DoHash()
 
+	db, err := collection()
+	if err != nil {
+		c.Logger().Error(err)
+		return c.String(http.StatusInternalServerError, "Internal server error")
+	}
+
 	if _, err = db.InsertOne(c.Request().Context(), secret); err != nil {
 		c.Logger().Error(err)
 		return c.String(http.StatusInternalServerError, "Failed to store secret")
 	}
 
-	return GetSecret(addCtxValue(c, "hash", secret.Hash))
-}
+	// Return the stored record directly. Do not read it back through
+	// GetSecret, which would consume a view and delete a one-view secret
+	// before the recipient can fetch it. Return the plaintext the caller sent.
+	secret.SecretText = secretText
 
-func addCtxValue(c echo.Context, key, value string) echo.Context {
-	k := c.ParamNames()
-	k = append(k, key)
-
-	v := c.ParamValues()
-	v = append(v, value)
-
-	c.SetParamNames(k...)
-	c.SetParamValues(v...)
-
-	return c
+	return c.JSON(http.StatusOK, secret)
 }

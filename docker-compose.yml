@@ -6,16 +6,19 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-change-me-in-production}
-      - MONGO_URI=mongodb://mongo:27017
+      # Required. There is no default. Set ENCRYPTION_KEY in your shell or a .env file.
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
+      - MONGO_URI=mongodb://${MONGO_USER:?MONGO_USER is required}:${MONGO_PASSWORD:?MONGO_PASSWORD is required}@mongo:27017
     depends_on:
       - mongo
     restart: on-failure
 
   mongo:
-    image: mongo:4.0
-    ports:
-      - "27017:27017"
+    image: mongo:7.0
+    # No host port mapping. Mongo is only reachable on the internal compose network.
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER:?MONGO_USER is required}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:?MONGO_PASSWORD is required}
     volumes:
       - mongo-data:/data/db
 
