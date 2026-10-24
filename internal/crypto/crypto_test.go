@@ -1,9 +1,6 @@
 package crypto
 
-import (
-	"os"
-	"testing"
-)
+import "testing"
 
 func TestEncryptDecryptRoundtrip(t *testing.T) {
 	original := "my secret message"
@@ -34,14 +31,13 @@ func TestEncryptProducesUniqueOutput(t *testing.T) {
 }
 
 func TestDecryptWithWrongKey(t *testing.T) {
-	os.Setenv("ENCRYPTION_KEY", "key-one")
+	t.Setenv("ENCRYPTION_KEY", "key-one")
 	encrypted, err := Encrypt("secret")
 	if err != nil {
 		t.Fatalf("Encrypt failed: %v", err)
 	}
 
-	os.Setenv("ENCRYPTION_KEY", "key-two")
-	defer os.Unsetenv("ENCRYPTION_KEY")
+	t.Setenv("ENCRYPTION_KEY", "key-two")
 
 	_, err = Decrypt(encrypted)
 	if err == nil {
